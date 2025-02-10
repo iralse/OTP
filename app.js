@@ -22,31 +22,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-async function registerWebAuthn() {
+async function storeTotpSecret() {
     try {
-        const usernameInput = document.getElementById("username").value.trim();
-        if (!/^[A-Za-z]{1,255}$/.test(usernameInput)) {
-            alert("Логин должен содержать только латинские буквы и быть не длиннее 255 символов.");
-            return;
-        }
+        const secret = generateRandomSecret();
+        alert(`Секретный ключ TOTP: ${secret}`);
 
-        const credential = await navigator.credentials.create({
-            publicKey: {
-                challenge: new TextEncoder().encode("registration"),
-                rp: { name: "OTP" },
-                user: {
-                    id: new TextEncoder().encode(usernameInput),
-                    name: usernameInput,
-                    displayName: usernameInput,
-                },
-                pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-                attestation: "none",
-                extensions: { largeBlob: { support: "required" } },
-            },
+        const credential = await navigator.credentials.get({
+            publicKey: { extensions: { largeBlob: true } },
         });
-        localStorage.setItem("webauthn_id", arrayBufferToBase64(credential.rawId));
-        alert("Регистрация завершена. Теперь создайте TOTP-ключ.");
+
+        if (credential && credential.authenticatorAttachment === "platform") {
+            await navigator.credentials.create({
+                publicKey: {
+                    rp: { name: "OTP" },
+                    user: {
+                        id: new TextEncoder().encode("user"),
+                        name: "user",
+                        displayName: "User",
+                    },
+                    challenge: new Uint8Array(32),
+                    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+                    authenticatorSelection: { authenticatorAttachment: "platform" },
+                    extensions: { largeBlob: { write: new TextEncoder().encode(secret) } },
+                },
+            });
+            alert("Секрет сохранён в WebAuthn Large Blob.");
+        } else {
+            alert("Ошибка при сохранении секрета.");
+        }
     } catch (err) {
-        console.error("Ошибка регистрации WebAuthn", err);
+        console.error("Ошибка при сохранении секрета TOTP", err);
     }
+}
+
+function generateRandomSecret() {
+    const array = new Uint8Array(10);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, "0")).join("");
 }
