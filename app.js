@@ -25,7 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /**
  * Функция регистрации WebAuthn.
- * Создаёт учётную запись с поддержкой largeBlob (без записи данных) и сохраняет только идентификатор учётных данных.
+ * Создаёт учётную запись с поддержкой largeBlob (без записи данных)
+ * и сохраняет только идентификатор учётных данных.
  */
 async function registerWebAuthn() {
   try {
@@ -51,13 +52,13 @@ async function registerWebAuthn() {
         },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }],
         attestation: "none",
-        // Запрашиваем поддержку largeBlob без попытки записи данных
+        // Запрашиваем поддержку largeBlob без записи данных
         extensions: { largeBlob: { support: "required" } },
       },
     });
     console.log("registerWebAuthn: Созданные учётные данные:", credential);
 
-    // Сохраняем идентификатор учётных данных для последующего чтения largeBlob
+    // Сохраняем идентификатор учётных данных для последующего обновления largeBlob
     localStorage.setItem("totp_credential_id", arrayBufferToBase64(credential.rawId));
     alert("Регистрация завершена. Теперь создайте TOTP-ключ.");
   } catch (err) {
@@ -66,8 +67,10 @@ async function registerWebAuthn() {
 }
 
 /**
- * Функция сохранения TOTP-ключа в WebAuthn Large Blob.
- * Создаётся новый учётный ключ, в largeBlob записывается TOTP-секрет.
+ * Функция сохранения TOTP-секрета в WebAuthn Large Blob.
+ * Для записи секрета используется assertion (navigator.credentials.get)
+ * с расширением largeBlob.write. Таким образом, мы обновляем largeBlob
+ * для ранее зарегистрированного credential.
  */
 async function storeTotpSecret() {
   try {
@@ -79,36 +82,37 @@ async function storeTotpSecret() {
     const secretBuffer = new TextEncoder().encode(secret);
     console.log("storeTotpSecret: TOTP-секрет для записи (Uint8Array):", secretBuffer);
 
-    // Генерируем случайный challenge
+    // Получаем идентификатор ранее зарегистрированного credential
+    const storedCredentialId = localStorage.getItem("totp_credential_id");
+    if (!storedCredentialId) {
+      throw new Error("Идентификатор учетных данных не найден. Сначала выполните регистрацию.");
+    }
+    const allowCredential = [{
+      type: "public-key",
+      id: base64ToArray(storedCredentialId),
+      transports: ["internal"],
+    }];
+    console.log("storeTotpSecret: allowCredentials:", allowCredential);
+
+    // Генерируем случайный challenge для обновления largeBlob
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
     console.log("storeTotpSecret: Сгенерированный challenge:", challenge);
 
-    // Формируем registration options для записи секрета в largeBlob
-    const options = {
-      publicKey: {
-        challenge: challenge,
-        rp: { name: "OTP" },
-        user: {
-          id: new TextEncoder().encode("user"),
-          name: "user",
-          displayName: "User",
-        },
-        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-        attestation: "none",
-        authenticatorSelection: { authenticatorAttachment: "platform" },
-        // Передаём TOTP-секрет в виде Uint8Array в largeBlob.write
-        extensions: { largeBlob: { write: secretBuffer } },
-      },
+    // Формируем PublicKeyCredentialRequestOptions для обновления largeBlob
+    const publicKeyOptions = {
+      challenge: challenge,
+      allowCredentials: allowCredential,
+      userVerification: "required",
+      extensions: { largeBlob: { write: secretBuffer } },
     };
+    console.log("storeTotpSecret: PublicKeyCredentialRequestOptions для обновления largeBlob:", publicKeyOptions);
 
-    console.log("storeTotpSecret: Registration options для записи в largeBlob:", options);
-
-    const credential = await navigator.credentials.create(options);
-    console.log("storeTotpSecret: Учётные данные с записанным largeBlob:", credential);
-
-    // Сохраняем идентификатор учётных данных для последующего чтения largeBlob
-    localStorage.setItem("totp_credential_id", arrayBufferToBase64(credential.rawId));
+    // Вызываем assertion для обновления largeBlob
+    const assertion = await navigator.credentials.get({
+      publicKey: publicKeyOptions,
+    });
+    console.log("storeTotpSecret: Обновлённые учётные данные:", assertion);
     alert("Секрет сохранён в WebAuthn Large Blob.");
   } catch (err) {
     console.error("Ошибка при сохранении секрета TOTP", err.name, err.message, err);
@@ -139,7 +143,7 @@ async function getTotpSecret() {
     console.log("getTotpSecret: challenge instanceof Uint8Array?", challenge instanceof Uint8Array);
     console.log("getTotpSecret: challenge.byteLength:", challenge.byteLength);
 
-    // Формируем PublicKeyCredentialRequestOptions
+    // Формируем PublicKeyCredentialRequestOptions для чтения largeBlob
     const publicKeyOptions = {
       challenge: challenge,
       allowCredentials: allowCredential,
