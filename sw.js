@@ -1,4 +1,4 @@
-const CACHE_NAME = "pwa-otp-cache-v2";
+const CACHE_NAME = "pwa-otp-cache-v3";
 const FILES_TO_CACHE = [
     "/index.html",
     "/styles.css",
@@ -21,6 +21,7 @@ self.addEventListener("activate", (event) => {
             return Promise.all(
                 keyList.map((key) => {
                     if (key !== CACHE_NAME) {
+                        console.log("Удаление старого кэша:", key);
                         return caches.delete(key);
                     }
                 })
