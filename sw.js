@@ -1,45 +1,52 @@
-const CACHE_NAME = "pwa-otp-cache-v3";
-const FILES_TO_CACHE = [
-    "/index.html",
-    "/styles.css",
-    "/app.js",
-    "/sw.js",
-    "/manifest.json",
-    "/icon.png"
-];
+document.addEventListener("DOMContentLoaded", () => {
+    const registerBtn = document.getElementById("register-btn");
+    if (registerBtn) {
+        registerBtn.addEventListener("click", registerWebAuthn);
+    } else {
+        console.error("Кнопка регистрации не найдена!");
+    }
 
-self.addEventListener("install", (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
-    );
-    self.skipWaiting();
+    const generateSecretBtn = document.getElementById("generate-secret-btn");
+    if (generateSecretBtn) {
+        generateSecretBtn.addEventListener("click", storeTotpSecret);
+    }
+
+    const getOtpBtn = document.getElementById("get-otp-btn");
+    if (getOtpBtn) {
+        getOtpBtn.addEventListener("click", generateOtp);
+    }
+
+    const logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", clearAllData);
+    }
 });
 
-self.addEventListener("activate", (event) => {
-    event.waitUntil(
-        caches.keys().then((keyList) => {
-            return Promise.all(
-                keyList.map((key) => {
-                    if (key !== CACHE_NAME) {
-                        console.log("Удаление старого кэша:", key);
-                        return caches.delete(key);
-                    }
-                })
-            );
-        })
-    );
-    self.clients.claim();
-});
+async function registerWebAuthn() {
+    try {
+        const usernameInput = document.getElementById("username").value.trim();
+        if (!/^[A-Za-z]{1,255}$/.test(usernameInput)) {
+            alert("Логин должен содержать только латинские буквы и быть не длиннее 255 символов.");
+            return;
+        }
 
-self.addEventListener("fetch", (event) => {
-    event.respondWith(
-        caches.open(CACHE_NAME).then((cache) => {
-            return fetch(event.request).then((response) => {
-                if (event.request.url.startsWith("http")) {
-                    cache.put(event.request, response.clone());
-                }
-                return response;
-            }).catch(() => caches.match(event.request));
-        })
-    );
-});
+        const credential = await navigator.credentials.create({
+            publicKey: {
+                challenge: new TextEncoder().encode("registration"),
+                rp: { name: "OTP" },
+                user: {
+                    id: new TextEncoder().encode(usernameInput),
+                    name: usernameInput,
+                    displayName: usernameInput,
+                },
+                pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+                attestation: "none",
+                extensions: { largeBlob: { support: "required" } },
+            },
+        });
+        localStorage.setItem("webauthn_id", arrayBufferToBase64(credential.rawId));
+        alert("Регистрация завершена. Теперь создайте TOTP-ключ.");
+    } catch (err) {
+        console.error("Ошибка регистрации WebAuthn", err);
+    }
+}
