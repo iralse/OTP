@@ -23,6 +23,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+// Глобальные переменные для таймера OTP
+let timerInterval;
+let otpTimerActive = false;
+
 /**
  * Функция регистрации WebAuthn.
  * Создаёт учётную запись с поддержкой largeBlob (без записи данных)
@@ -178,9 +182,14 @@ async function getTotpSecret() {
 
 /**
  * Модифицированная функция генерации OTP-кода.
- * Извлекает TOTP-секрет, генерирует OTP и запускает таймер обновления.
+ * Если таймер активен (otpTimerActive === true), генерация нового OTP не выполняется.
+ * Иначе извлекается TOTP-секрет, генерируется OTP и запускается таймер обновления.
  */
 async function generateOtp() {
+  if (otpTimerActive) {
+    console.log("OTP уже активен, генерация нового не производится до завершения таймера.");
+    return;
+  }
   try {
     const secret = await getTotpSecret();
     if (!secret) {
@@ -192,10 +201,12 @@ async function generateOtp() {
     
     // Запуск/сброс таймера
     clearInterval(timerInterval);
+    otpTimerActive = true;
     const startTime = Math.floor(Date.now() / 1000);
     timerInterval = setInterval(() => {
       const currentTime = Math.floor(Date.now() / 1000);
-      updateTimer(currentTime - startTime);
+      const elapsed = currentTime - startTime;
+      updateTimer(elapsed);
     }, 1000);
   } catch (err) {
     console.error("Ошибка генерации OTP", err.name, err.message, err);
@@ -243,8 +254,9 @@ function clearAllData() {
   if (otpDisplay) {
     otpDisplay.innerText = '';
   }
-  // Останавливаем таймер
+  // Останавливаем таймер и сбрасываем флаг
   clearInterval(timerInterval);
+  otpTimerActive = false;
   // Очищаем вывод таймера
   const timerElement = document.querySelector('.timer');
   if (timerElement) {
@@ -301,18 +313,20 @@ if (isAndroid()) {
   }
 }
 
-// Таймер OTP
-let timerInterval;
-
+/**
+ * Функция обновления таймера.
+ * Выводит оставшееся время. Если время закончилось, останавливает таймер и сбрасывает флаг otpTimerActive.
+ */
 function updateTimer(secondsElapsed) {
   const timerElement = document.querySelector('.timer');
   if (!timerElement) return;
-
+  
   const remaining = 30 - secondsElapsed;
   if (remaining > 0) {
     timerElement.textContent = `Обновление через: ${remaining} сек.`;
   } else {
     timerElement.textContent = `Обновление через: 0 сек.`;
     clearInterval(timerInterval);
+    otpTimerActive = false;
   }
 }
