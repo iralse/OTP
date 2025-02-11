@@ -10,7 +10,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>OTP</h1>
+        <h1>OTP Генератор</h1>
         <input type="text" id="username" placeholder="Введите логин" maxlength="255" pattern="[A-Za-z]+" required>
         <button id="register-btn">Регистрация</button>
         <button id="generate-secret-btn">Создать TOTP-ключ</button>
@@ -20,7 +20,7 @@
         <footer>Разработано УЭК</footer>
     </div>
 
-    <!-- Подключаем `app.js` в конце body, чтобы избежать ошибки с `null` -->
+    <!-- Подключаем `app.js` в конце body -->
     <script src="app.js"></script>
 </body>
 </html>
