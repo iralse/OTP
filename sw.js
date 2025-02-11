@@ -1,62 +1,81 @@
-document.addEventListener("DOMContentLoaded", () => {
-    const registerBtn = document.getElementById("register-btn");
-    if (registerBtn) {
-        registerBtn.addEventListener("click", registerWebAuthn);
-    } else {
-        console.error("Кнопка регистрации не найдена!");
-    }
+const CACHE_NAME = 'otp-cache-v1';
+const urlsToCache = [
+  '/index.html',
+  '/styles.css',
+  '/app.js',
+  '/manifest.json',
+  '/icon.png',
+  '/offline.html' // Если у вас есть offline.html для отображения в офлайн-режиме
+];
 
-    const generateSecretBtn = document.getElementById("generate-secret-btn");
-    if (generateSecretBtn) {
-        generateSecretBtn.addEventListener("click", storeTotpSecret);
-    }
-
-    const getOtpBtn = document.getElementById("get-otp-btn");
-    if (getOtpBtn) {
-        getOtpBtn.addEventListener("click", generateOtp);
-    }
-
-    const logoutBtn = document.getElementById("logout-btn");
-    if (logoutBtn) {
-        logoutBtn.addEventListener("click", clearAllData);
-    }
+// Событие установки: кэшируем все необходимые ресурсы
+self.addEventListener('install', event => {
+  console.log('[Service Worker] Установка');
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        console.log('[Service Worker] Кэширование файлов:', urlsToCache);
+        return cache.addAll(urlsToCache);
+      })
+      .catch(error => {
+        console.error('[Service Worker] Ошибка при кэшировании файлов:', error);
+      })
+  );
+  // Принудительное обновление service worker без ожидания закрытия старых клиентов
+  self.skipWaiting();
 });
 
-async function storeTotpSecret() {
-    try {
-        const secret = generateRandomSecret();
-        alert(`Секретный ключ TOTP: ${secret}`);
+// Событие активации: удаляем старые кэши
+self.addEventListener('activate', event => {
+  console.log('[Service Worker] Активация');
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(name => {
+          if (name !== CACHE_NAME) {
+            console.log('[Service Worker] Удаление старого кэша:', name);
+            return caches.delete(name);
+          }
+        })
+      );
+    })
+  );
+  // Захватываем управление всеми клиентами сразу
+  self.clients.claim();
+});
 
-        const credential = await navigator.credentials.get({
-            publicKey: { extensions: { largeBlob: true } },
-        });
-
-        if (credential && credential.authenticatorAttachment === "platform") {
-            await navigator.credentials.create({
-                publicKey: {
-                    rp: { name: "OTP" },
-                    user: {
-                        id: new TextEncoder().encode("user"),
-                        name: "user",
-                        displayName: "User",
-                    },
-                    challenge: new Uint8Array(32),
-                    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
-                    authenticatorSelection: { authenticatorAttachment: "platform" },
-                    extensions: { largeBlob: { write: new TextEncoder().encode(secret) } },
-                },
-            });
-            alert("Секрет сохранён в WebAuthn Large Blob.");
-        } else {
-            alert("Ошибка при сохранении секрета.");
+// Событие fetch: обрабатываем запросы
+self.addEventListener('fetch', event => {
+  console.log('[Service Worker] Запрос:', event.request.url);
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        // Если ресурс найден в кэше, возвращаем его
+        if (response) {
+          return response;
         }
-    } catch (err) {
-        console.error("Ошибка при сохранении секрета TOTP", err);
-    }
-}
-
-function generateRandomSecret() {
-    const array = new Uint8Array(10);
-    window.crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, "0")).join("");
-}
+        // Если ресурс не найден, обращаемся к сети
+        return fetch(event.request)
+          .then(networkResponse => {
+            // Если ответ недействительный, просто возвращаем его
+            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+              return networkResponse;
+            }
+            // Клонируем ответ для кэширования
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                cache.put(event.request, responseClone);
+              });
+            return networkResponse;
+          })
+          .catch(error => {
+            console.error('[Service Worker] Ошибка при загрузке из сети:', error);
+            // Если это навигационный запрос и сети нет, возвращаем офлайн-страницу
+            if (event.request.mode === 'navigate') {
+              return caches.match('/offline.html');
+            }
+          });
+      })
+  );
+});
