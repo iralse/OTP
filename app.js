@@ -69,7 +69,7 @@ async function registerWebAuthn() {
 /**
  * Функция сохранения TOTP-секрета в WebAuthn Large Blob.
  * Для записи секрета используется assertion (navigator.credentials.get)
- * с расширением largeBlob.write. Таким образом, мы обновляем largeBlob
+ * с расширением largeBlob.write. Таким образом, обновляется largeBlob
  * для ранее зарегистрированного credential.
  */
 async function storeTotpSecret() {
@@ -177,7 +177,8 @@ async function getTotpSecret() {
 }
 
 /**
- * Функция генерации OTP-кода.
+ * Модифицированная функция генерации OTP-кода.
+ * Извлекает TOTP-секрет, генерирует OTP и запускает таймер обновления.
  */
 async function generateOtp() {
   try {
@@ -187,7 +188,15 @@ async function generateOtp() {
       return;
     }
     const otp = await generateTotp(secret);
-    document.getElementById("otp-display").innerText = `Ваш OTP: ${otp}`;
+    document.querySelector('.otp-value').innerText = `Ваш OTP: ${otp}`;
+    
+    // Запуск/сброс таймера
+    clearInterval(timerInterval);
+    const startTime = Math.floor(Date.now() / 1000);
+    timerInterval = setInterval(() => {
+      const currentTime = Math.floor(Date.now() / 1000);
+      updateTimer(currentTime - startTime);
+    }, 1000);
   } catch (err) {
     console.error("Ошибка генерации OTP", err.name, err.message, err);
   }
@@ -260,54 +269,37 @@ function generateRandomSecret() {
   window.crypto.getRandomValues(array);
   return Array.from(array, byte => byte.toString(16).padStart(2, "0")).join("");
 }
-// Добавить в конец app.js
+
+// ======================================================================
+// Дополнительный код (Android-баннер и таймер OTP)
+// ======================================================================
 
 // Детектор Android
 function isAndroid() {
-    return /android/i.test(navigator.userAgent);
+  return /android/i.test(navigator.userAgent);
 }
 
 // Показать баннер для Android
 if (isAndroid()) {
-    const banner = document.getElementById('android-banner');
+  const banner = document.getElementById('android-banner');
+  if (banner) {
     banner.style.display = 'block';
     setTimeout(() => banner.remove(), 10000);
+  }
 }
 
 // Таймер OTP
 let timerInterval;
 
 function updateTimer(seconds) {
-    const timerElement = document.querySelector('.timer');
-    if (!timerElement) return;
-    
-    const remaining = 30 - (seconds % 30);
-    timerElement.textContent = `Обновление через: ${remaining} сек.`;
-    
-    if (remaining === 30) {
-        generateOtp();
-    }
-}
+  const timerElement = document.querySelector('.timer');
+  if (!timerElement) return;
 
-// Модифицированная функция generateOtp
-async function generateOtp() {
-    try {
-        const secret = await getTotpSecret();
-        if (!secret) {
-            alert("Секретный ключ TOTP не найден!");
-            return;
-        }
-        const otp = await generateTotp(secret);
-        document.querySelector('.otp-value').innerText = `Ваш OTP: ${otp}`;
-        
-        // Запуск/сброс таймера
-        clearInterval(timerInterval);
-        const startTime = Math.floor(Date.now() / 1000);
-        timerInterval = setInterval(() => {
-            const currentTime = Math.floor(Date.now() / 1000);
-            updateTimer(currentTime - startTime);
-        }, 1000);
-    } catch (err) {
-        console.error("Ошибка генерации OTP", err);
-    }
+  const remaining = 30 - (seconds % 30);
+  timerElement.textContent = `Обновление через: ${remaining} сек.`;
+
+  // Если цикл завершился, можно запустить обновление OTP
+  if (remaining === 30) {
+    generateOtp();
+  }
 }
