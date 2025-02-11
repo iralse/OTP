@@ -230,13 +230,26 @@ function hotp(secret, counter, digits) {
 
 /**
  * Функция очистки всех данных.
- * Удаляется идентификатор учётных данных (credential id) из localStorage.
+ * При нажатии на кнопку "Выход" вывод OTP кода очищается,
+ * а счетчик времени останавливается.
  */
 function clearAllData() {
   localStorage.removeItem("totp_credential_id");
   caches.keys().then((keyList) => {
     return Promise.all(keyList.map((key) => caches.delete(key)));
   });
+  // Очищаем вывод OTP кода
+  const otpDisplay = document.querySelector('.otp-value');
+  if (otpDisplay) {
+    otpDisplay.innerText = '';
+  }
+  // Останавливаем таймер
+  clearInterval(timerInterval);
+  // Очищаем вывод таймера
+  const timerElement = document.querySelector('.timer');
+  if (timerElement) {
+    timerElement.textContent = 'Обновление через: 0 сек.';
+  }
   alert("Все данные очищены.");
 }
 
@@ -291,15 +304,15 @@ if (isAndroid()) {
 // Таймер OTP
 let timerInterval;
 
-function updateTimer(seconds) {
+function updateTimer(secondsElapsed) {
   const timerElement = document.querySelector('.timer');
   if (!timerElement) return;
 
-  const remaining = 30 - (seconds % 30);
-  timerElement.textContent = `Обновление через: ${remaining} сек.`;
-
-  // Если цикл завершился, можно запустить обновление OTP
-  if (remaining === 30) {
-    generateOtp();
+  const remaining = 30 - secondsElapsed;
+  if (remaining > 0) {
+    timerElement.textContent = `Обновление через: ${remaining} сек.`;
+  } else {
+    timerElement.textContent = `Обновление через: 0 сек.`;
+    clearInterval(timerInterval);
   }
 }
